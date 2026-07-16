@@ -85,7 +85,7 @@ def submit_kyc():
                     'name': filename,
                     'parents': [customer_folder_id]
                 }
-                media = MediaIoBaseUpload(file.stream, mime_type=file.content_type, resumable=True)
+                media = MediaIoBaseUpload(file.stream, mimetype=file.content_type, resumable=True)
                 service.files().create(body=file_metadata, media_body=media, fields='id').execute()
 
         return f"<h2 style='text-align:center;font-family:sans-serif;color:green;margin-top:50px;'>✅ KYC Data & Documents Uploaded Directly to Google Drive for {c_name}!</h2>"
