@@ -12,17 +12,15 @@ app = Flask(__name__)
 PERSONAL_EMAIL = "operations@bhayajimercantile.com"
 
 def get_drive_service():
-    # Render par set kiye gaye naye environment variables ko read karna
     client_id = os.environ.get("GOOGLE_CLIENT_ID")
     client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
     refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
     
     if not all([client_id, client_secret, refresh_token]):
-        raise ValueError("Google OAuth credentials (CLIENT_ID, SECRET, or REFRESH_TOKEN) are missing in Render environment variables!")
+        raise ValueError("Google OAuth credentials missing in Render environment variables!")
     
-    # Naye OAuth Credentials build karna jo personal storage ka quota use karenge
     creds = Credentials(
-        token=None,  # Access token automatic refresh ho jayega
+        token=None,
         refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id,
@@ -34,9 +32,6 @@ def get_drive_service():
 
 MAIN_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
-# --- ROOT ROUTE REDIRECT ---
-# Agar koi direct main link 'https://courierbird-kyc-portal.onrender.com/' kholde, 
-# toh use 'Not Found' ke bajaye seedhe form wale page par redirect kar diya jaye.
 @app.route('/', methods=['GET'])
 def home_redirect():
     return redirect('/kyc')
@@ -53,14 +48,17 @@ def submit_kyc():
 
         drive_service = get_drive_service()
 
+        # HTML Form Inputs ke naye accurate names (MAPPED CORRECTLY)
         company_name = request.form.get('company_name', 'Unknown_Company').strip().replace(" ", "_")
-        pan_number = request.form.get('pan_number', '')
-        gst_number = request.form.get('gst_number', '')
+        gst_number = request.form.get('gstin', '')       # Form name="gstin"
+        pan_number = request.form.get('pan', '')         # Form name="pan"
         contact_person = request.form.get('contact_person', '')
-        phone = request.form.get('phone', '')
+        phone = request.form.get('mobile', '')           # Form name="mobile"
         email = request.form.get('email', '')
+        bank_account = request.form.get('bank_account', '') # Form name="bank_account"
+        ifsc_code = request.form.get('ifsc_code', '')     # Form name="ifsc_code"
 
-        # 1. Company ke naam ka sub-folder banana (Aapke main folder ke andar)
+        # 1. Company Name Folder banana
         folder_metadata = {
             'name': f"KYC_{company_name}",
             'mimeType': 'application/vnd.google-apps.folder',
@@ -73,8 +71,18 @@ def submit_kyc():
         ).execute()
         subfolder_id = subfolder.get('id')
 
-        # 2. Text details file save karna
-        details_content = f"Company Name: {company_name}\nPAN: {pan_number}\nGST: {gst_number}\nContact: {contact_person}\nPhone: {phone}\nEmail: {email}\n"
+        # 2. Text Details File taiyar karna (Naye Fields ke sath)
+        details_content = (
+            f"Company Name: {company_name}\n"
+            f"PAN: {pan_number}\n"
+            f"GST: {gst_number}\n"
+            f"Contact Person: {contact_person}\n"
+            f"Phone: {phone}\n"
+            f"Email: {email}\n"
+            f"Bank Account: {bank_account}\n"
+            f"IFSC Code: {ifsc_code}\n"
+        )
+        
         text_metadata = {
             'name': f"{company_name}_details.txt",
             'parents': [subfolder_id]
@@ -88,12 +96,14 @@ def submit_kyc():
             supportsAllDrives=True
         ).execute()
 
-        # 3. Documents/Attachments ko save karna
-        uploaded_files = request.files.getlist('files')
-        for file in uploaded_files:
+        # 3. HTML ke saare file fields ko loop karke Google Drive par bhejna
+        file_fields = ['gst_doc', 'pan_doc', 'aadhaar_doc', 'address_doc', 'cheque_doc']
+        for field in file_fields:
+            file = request.files.get(field)
             if file and file.filename != '':
+                # Purana extension format rakhne ke liye original name use karein
                 file_metadata = {
-                    'name': file.filename,
+                    'name': f"{field}_{file.filename}",
                     'parents': [subfolder_id]
                 }
                 file_media = MediaIoBaseUpload(
