@@ -13,7 +13,6 @@ def get_drive_service():
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS_JSON environment variable is missing!")
     
-    # Render variables clean up for quotes/newlines
     creds_json = creds_json.strip()
     creds_dict = json.loads(creds_json)
     
@@ -44,7 +43,7 @@ def submit_kyc():
         phone = request.form.get('phone', '')
         email = request.form.get('email', '')
 
-        # 1. Create Main Company Sub-folder
+        # 1. Main Company Sub-folder Banayein
         folder_metadata = {
             'name': f"KYC_{company_name}",
             'mimeType': 'application/vnd.google-apps.folder',
@@ -53,16 +52,20 @@ def submit_kyc():
         subfolder = drive_service.files().create(body=folder_metadata, fields='id').execute()
         subfolder_id = subfolder.get('id')
 
-        # 2. Upload text details file inside sub-folder
+        # 2. Text Details File
         details_content = f"Company Name: {company_name}\nPAN: {pan_number}\nGST: {gst_number}\nContact: {contact_person}\nPhone: {phone}\nEmail: {email}\n"
+        
         text_metadata = {
             'name': f"{company_name}_details.txt",
             'parents': [subfolder_id]
         }
-        text_media = MediaIoBaseUpload(BytesIO(details_content.encode('utf-8')), mimetype='text/plain', resumable=True)
+        
+        # Bytes stream handling logic
+        bio = BytesIO(details_content.encode('utf-8'))
+        text_media = MediaIoBaseUpload(bio, mimetype='text/plain', resumable=False)
         drive_service.files().create(body=text_metadata, media_body=text_media).execute()
 
-        # 3. Upload structural attachments inside sub-folder
+        # 3. Documents Attachments Upload
         uploaded_files = request.files.getlist('files')
         for file in uploaded_files:
             if file and file.filename != '':
@@ -70,16 +73,22 @@ def submit_kyc():
                     'name': file.filename,
                     'parents': [subfolder_id]
                 }
-                file_media = MediaIoBaseUpload(file.stream, mimetype=file.content_type if file.content_type else 'application/octet-stream', resumable=True)
+                file_media = MediaIoBaseUpload(file.stream, mimetype=file.content_type if file.content_type else 'application/octet-stream', resumable=False)
                 drive_service.files().create(body=file_metadata, media_body=file_media).execute()
 
         return "<h1>KYC Documents Submitted Successfully!</h1><p>Check your Google Drive folder now.</p>", 200
 
     except Exception as e:
-        # Structured representation for errors
         import traceback
         error_details = traceback.format_exc()
-        return f"<h1>Error uploading to Google Drive:</h1><pre>{error_details}</pre>", 500
+        # Google API detailed content display logic
+        error_content = ""
+        if hasattr(e, 'content'):
+            try:
+                error_content = f"\nAPI Response Content: {e.content.decode('utf-8')}"
+            except:
+                error_content = f"\nAPI Response Content: {str(e.content)}"
+        return f"<h1>Error uploading to Google Drive:</h1><pre>{error_details}{error_content}</pre>", 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
