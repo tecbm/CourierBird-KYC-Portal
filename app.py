@@ -7,8 +7,8 @@ from flask import Flask, render_template, request, redirect, url_for
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
-# Normal storage path (Free Tier ke liye)
-UPLOAD_FOLDER = 'customer_documents'
+# --- STORAGE CONFIGURATION (Free Tier Ke Liye) ---
+UPLOAD_FOLDER = 'static/uploads'
 DB_NAME = 'logistics_kyc.db'
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -100,18 +100,17 @@ def submit_kyc(token):
     conn.commit()
     conn.close()
 
+    # Documents ko securely 'static/uploads' me save karna taaki online access ho sake
     doc_fields = ['gst_doc', 'pan_doc', 'aadhaar_doc', 'address_doc', 'cheque_doc']
     for field in doc_fields:
         file = request.files.get(field)
         if file and file.filename != '':
-            # Files ko isi main project directory ke static/images folder me temporary rakhte hain taaki bina shell ke bhi unhe direct link se khola ja sake
-            os.makedirs('static/uploads', exist_ok=True)
-            filename = f"{c_name}_{field}_{file.filename}"
-            file.save(os.path.join('static/uploads', filename))
+            filename = f"{c_name}_{field}_{file.filename}".replace(" ", "_")
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
     return f"<h2 style='text-align:center;font-family:sans-serif;color:green;margin-top:50px;'>✅ KYC Submitted Successfully for {c_name}!</h2>"
 
-# --- SECRET LINK TO VIEW DATA ---
+# --- SECRET DASHBOARD WITH CLICKABLE DOWNLOAD LINKS ---
 @app.route('/view-secret-data', methods=['GET'])
 def view_data():
     conn = sqlite3.connect(DB_NAME)
@@ -122,27 +121,52 @@ def view_data():
     
     html = '''
     <style>
-        table { width: 100%; border-collapse: collapse; font-family: sans-serif; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        table { width: 100%; border-collapse: collapse; font-family: sans-serif; margin-top: 20px;}
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
         th { background-color: #1e3a8a; color: white; }
-        tr:nth-child(even){background-color: #f2f2f2;}
+        tr:nth-child(even){background-color: #f9f9f9;}
+        .doc-link { color: #1e3a8a; font-weight: bold; text-decoration: none; margin-right: 8px;}
+        .doc-link:hover { text-decoration: underline; }
     </style>
-    <h2>Courier Bird - Received KYC Applications</h2>
-    <table>
-        <tr>
-            <th>ID</th><th>Company Name</th><th>GSTIN</th><th>PAN</th><th>Contact Person</th>
-            <th>Mobile</th><th>Email</th><th>Bank Account</th><th>IFSC</th><th>Time</th>
-        </tr>
+    <div style="padding: 20px;">
+        <h2>🦅 Courier Bird - Received KYC Applications</h2>
+        <table>
+            <tr>
+                <th>ID</th><th>Company Name</th><th>GSTIN</th><th>PAN</th><th>Contact Person</th>
+                <th>Mobile</th><th>Email</th><th>Bank & IFSC</th><th>Submission Time</th><th>Uploaded Documents</th>
+            </tr>
     '''
+    
     for row in rows:
+        c_name_clean = row[1].replace(" ", "_")
+        docs_html = ""
+        doc_labels = {"gst_doc": "GST", "pan_doc": "PAN", "aadhaar_doc": "Aadhaar", "address_doc": "Address", "cheque_doc": "Cheque"}
+        
+        if os.path.exists('static/uploads'):
+            all_files = os.listdir('static/uploads')
+            for field, label in doc_labels.items():
+                matched_file = [f for f in all_files if f.startswith(f"{c_name_clean}_{field}_")]
+                if matched_file:
+                    docs_html += f'<a class="doc-link" href="/static/uploads/{matched_file[0]}" target="_blank">📄 {label}</a> '
+        
+        if not docs_html:
+            docs_html = "<span style='color:gray;'>No docs found</span>"
+
         html += f'''
-        <tr>
-            <td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td>
-            <td>{row[4]}</td><td>{row[5]}</td><td>{row[6]}</td><td>{row[7]}</td>
-            <td>{row[8]}</td><td>{row[9]}</td>
-        </tr>
+            <tr>
+                <td>{row[0]}</td>
+                <td><b>{row[1]}</b></td>
+                <td>{row[2]}</td>
+                <td>{row[3]}</td>
+                <td>{row[4]}</td>
+                <td>{row[5]}</td>
+                <td>{row[6]}</td>
+                <td>{row[7]}<br><small style="color:#666;">IFSC: {row[8]}</small></td>
+                <td>{row[9]}</td>
+                <td>{docs_html}</td>
+            </tr>
         '''
-    html += '</table>'
+    html += '</table></div>'
     return html
 
 if __name__ == '__main__':
