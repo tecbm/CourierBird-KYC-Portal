@@ -1,13 +1,15 @@
 import os
 import sqlite3
 import secrets
+import zipfile
+import io
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, send_file
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
-# --- STORAGE CONFIGURATION (Free Tier Ke Liye) ---
+# --- STORAGE CONFIGURATION ---
 UPLOAD_FOLDER = 'static/uploads'
 DB_NAME = 'logistics_kyc.db'
 
@@ -100,7 +102,6 @@ def submit_kyc(token):
     conn.commit()
     conn.close()
 
-    # Documents ko securely 'static/uploads' me save karna taaki online access ho sake
     doc_fields = ['gst_doc', 'pan_doc', 'aadhaar_doc', 'address_doc', 'cheque_doc']
     for field in doc_fields:
         file = request.files.get(field)
@@ -110,7 +111,52 @@ def submit_kyc(token):
 
     return f"<h2 style='text-align:center;font-family:sans-serif;color:green;margin-top:50px;'>✅ KYC Submitted Successfully for {c_name}!</h2>"
 
-# --- SECRET DASHBOARD WITH CLICKABLE DOWNLOAD LINKS ---
+# --- ROUTE TO DOWNLOAD ALL FILES OF A CUSTOMER IN A ZIP ---
+@app.route('/download-zip/<company_name>', methods=['GET'])
+def download_zip(company_name):
+    c_name_clean = company_name.replace(" ", "_")
+    zip_buffer = io.BytesIO()
+    
+    if os.path.exists(UPLOAD_FOLDER):
+        all_files = os.listdir(UPLOAD_FOLDER)
+        # Us company ke saare documents filter karna
+        customer_files = [f for f in all_files if f.startswith(f"{c_name_clean}_")]
+        
+        if not customer_files:
+            return "No documents found for this company.", 404
+            
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for file in customer_files:
+                file_path = os.path.join(UPLOAD_FOLDER, file)
+                zip_file.write(file_path, arcname=file)
+                
+        zip_buffer.seek(0)
+        return send_file(zip_buffer, mimetype='application/zip', as_attachment=True, download_name=f"{c_name_clean}_KYC_Documents.zip")
+    
+    return "Storage folder not found.", 404
+
+# --- ROUTE TO DOWNLOAD ALL DATA IN EXCEL/CSV SHEET ---
+@app.route('/download-excel', methods=['GET'])
+def download_excel():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM kyc_data")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Simple CSV formatting
+    csv_data = "ID,Company Name,GSTIN,PAN,Contact Person,Mobile,Email,Bank Account,IFSC Code,Submission Time\n"
+    for row in rows:
+        cleaned_row = [str(item).replace(",", " ") for item in row] # Commas ko text me se hatana takki CSV kharab na ho
+        csv_data += ",".join(cleaned_row) + "\n"
+        
+    output = io.BytesIO()
+    output.write(csv_data.encode('utf-8'))
+    output.seek(0)
+    
+    return send_file(output, mimetype='text/csv', as_attachment=True, download_name="CourierBird_KYC_Data.csv")
+
+# --- SECRET DASHBOARD ---
 @app.route('/view-secret-data', methods=['GET'])
 def view_data():
     conn = sqlite3.connect(DB_NAME)
@@ -125,33 +171,23 @@ def view_data():
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
         th { background-color: #1e3a8a; color: white; }
         tr:nth-child(even){background-color: #f9f9f9;}
-        .doc-link { color: #1e3a8a; font-weight: bold; text-decoration: none; margin-right: 8px;}
-        .doc-link:hover { text-decoration: underline; }
+        .btn { display: inline-block; padding: 6px 12px; background: #10b981; color: white; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .btn-zip { background: #f59e0b; margin-left: 5px; }
+        .btn-excel { background: #1e3a8a; padding: 10px 20px; font-size: 14px; margin-bottom: 20px; }
     </style>
     <div style="padding: 20px;">
         <h2>🦅 Courier Bird - Received KYC Applications</h2>
+        
+        <a href="/download-excel" class="btn btn-excel">📥 Download Full Data (Excel/CSV)</a>
+        
         <table>
             <tr>
                 <th>ID</th><th>Company Name</th><th>GSTIN</th><th>PAN</th><th>Contact Person</th>
-                <th>Mobile</th><th>Email</th><th>Bank & IFSC</th><th>Submission Time</th><th>Uploaded Documents</th>
+                <th>Mobile</th><th>Email</th><th>Bank & IFSC</th><th>Submission Time</th><th>Actions</th>
             </tr>
     '''
     
     for row in rows:
-        c_name_clean = row[1].replace(" ", "_")
-        docs_html = ""
-        doc_labels = {"gst_doc": "GST", "pan_doc": "PAN", "aadhaar_doc": "Aadhaar", "address_doc": "Address", "cheque_doc": "Cheque"}
-        
-        if os.path.exists('static/uploads'):
-            all_files = os.listdir('static/uploads')
-            for field, label in doc_labels.items():
-                matched_file = [f for f in all_files if f.startswith(f"{c_name_clean}_{field}_")]
-                if matched_file:
-                    docs_html += f'<a class="doc-link" href="/static/uploads/{matched_file[0]}" target="_blank">📄 {label}</a> '
-        
-        if not docs_html:
-            docs_html = "<span style='color:gray;'>No docs found</span>"
-
         html += f'''
             <tr>
                 <td>{row[0]}</td>
@@ -163,7 +199,9 @@ def view_data():
                 <td>{row[6]}</td>
                 <td>{row[7]}<br><small style="color:#666;">IFSC: {row[8]}</small></td>
                 <td>{row[9]}</td>
-                <td>{docs_html}</td>
+                <td>
+                    <a href="/download-zip/{row[1]}" class="btn btn-zip">📦 Download ZIP</a>
+                </td>
             </tr>
         '''
     html += '</table></div>'
