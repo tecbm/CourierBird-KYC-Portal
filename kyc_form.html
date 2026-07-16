@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Courier Bird - Logistics Partner Onboarding</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f1f5f9; padding: 20px; color: #334155; }
+        .form-container { max-width: 650px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .header { text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 25px; }
+        .company-logo { max-width: 180px; height: auto; margin-bottom: 10px; }
+        h2 { color: #1e3a8a; text-align: center; margin: 5px 0; font-size: 24px; }
+        p.sub { text-align: center; color: #64748b; font-size: 14px; margin: 0; }
+        .section-header { font-weight: 600; color: #3b82f6; margin: 25px 0 10px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; }
+        input[type="text"], input[type="email"] { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+        input[type="file"] { background: #f8fafc; padding: 8px; width: 100%; border: 1px dashed #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+        .submit-btn { width: 100%; background: #1e3a8a; color: white; border: none; padding: 12px; font-size: 16px; font-weight: 600; border-radius: 4px; cursor: pointer; margin-top: 20px; }
+        .submit-btn:hover { background: #172554; }
+    </style>
+</head>
+<body>
+
+<div class="form-container">
+    <div class="header">
+        <!-- Courier Bird Logo Integration -->
+        <img src="/static/images/logo.png" alt="Courier Bird Logo" class="company-logo">
+        <h2>Courier Bird Portal</h2>
+        <p class="sub">Logistics Partner KYC & Onboarding Verification Form</p>
+    </div>
+
+    <form action="/submit_kyc/{{ token }}" method="POST" enctype="multipart/form-data">
+        
+        <div class="section-header">1. Company / Business Details</div>
+        <div class="form-group">
+            <label>Registered Business Name *</label>
+            <input type="text" name="company_name" required placeholder="e.g. Courier Bird Associate">
+        </div>
+        <div class="form-group">
+            <label>GSTIN (GST Number) *</label>
+            <input type="text" name="gstin" required placeholder="15-digit GST Number">
+        </div>
+        <div class="form-group">
+            <label>Company/Individual PAN *</label>
+            <input type="text" name="pan" required placeholder="10-digit PAN (ABCDE1234F)">
+        </div>
+
+        <div class="section-header">2. Point of Contact</div>
+        <div class="form-group">
+            <label>Contact Person Name *</label>
+            <input type="text" name="contact_person" required>
+        </div>
+        <div class="form-group">
+            <label>Mobile Number *</label>
+            <input type="text" name="mobile" required placeholder="10-digit phone number">
+        </div>
+        <div class="form-group">
+            <label>Email Address *</label>
+            <input type="email" name="email" required placeholder="partner@domain.com">
+        </div>
+
+        <div class="section-header">3. Bank Account Details</div>
+        <div class="form-group">
+            <label>Bank Account Number *</label>
+            <input type="text" name="bank_account" required>
+        </div>
+        <div class="form-group">
+            <label>IFSC Code *</label>
+            <input type="text" name="ifsc_code" required placeholder="11-digit IFSC Code">
+        </div>
+
+        <div class="section-header">4. Document Uploads (PDF, JPG, PNG)</div>
+        <div class="form-group">
+            <label>GST Certificate Copy *</label>
+            <input type="file" name="gst_doc" accept=".pdf, .jpg, .jpeg, .png" required>
+        </div>
+        <div class="form-group">
+            <label>PAN Card Copy *</label>
+            <input type="file" name="pan_doc" accept=".pdf, .jpg, .jpeg, .png" required>
+        </div>
+        <div class="form-group">
+            <label>Aadhaar Card Copy (Front & Back) *</label>
+            <input type="file" name="aadhaar_doc" accept=".pdf, .jpg, .jpeg, .png" required>
+        </div>
+        <div class="form-group">
+            <label>Address Proof (Electricity Bill / Rent Agreement) *</label>
+            <input type="file" name="address_doc" accept=".pdf, .jpg, .jpeg, .png" required>
+        </div>
+        <div class="form-group">
+            <label>Signed Cheque in our Company Name *</label>
+            <input type="file" name="cheque_doc" accept=".pdf, .jpg, .jpeg, .png" required>
+        </div>
+
+        <button type="submit" class="submit-btn">Submit KYC Documents</button>
+    </form>
+</div>
+
+</body>
+</html>
