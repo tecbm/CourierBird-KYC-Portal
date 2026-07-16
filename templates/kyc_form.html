@@ -33,7 +33,8 @@
         <p class="sub">Logistics Partner KYC & Onboarding Verification Form</p>
     </div>
 
-    <form action="/submit_kyc/{{ token }}" method="POST" enctype="multipart/form-data">
+    <!-- UPDATE: Action badal kar single-link submit route (/submit_kyc) kar diya hai -->
+    <form action="/submit_kyc" method="POST" enctype="multipart/form-data">
         
         <div class="section-header">1. Company / Business Details</div>
         <div class="form-group">
@@ -93,7 +94,7 @@
         <div class="form-group">
             <label>Signed Cheque in our Company Name *</label>
             <input type="file" name="cheque_doc" accept=".pdf, .jpg, .jpeg, .png" required>
-            <!-- Naya Red Note Jo Cheque Ke Niche Add Hua Hai -->
+            <!-- Red Note Jo Cheque Ke Niche Add Hua Hai -->
             <span class="red-note">* Note: Please deliver original cheque to our representative.</span>
         </div>
 

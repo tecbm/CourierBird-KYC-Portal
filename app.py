@@ -3,27 +3,25 @@ import sqlite3
 import secrets
 import zipfile
 import io
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, send_file
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(16)
 
-# --- STORAGE CONFIGURATION ---
-UPLOAD_FOLDER = 'static/uploads'
-DB_NAME = 'logistics_kyc.db'
+# --- SECURE CONFIGURATION FROM ENVIRONMENT VARIABLES ---
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16))
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Admin@CourierBird') 
 
-# --- SET YOUR DASHBOARD PASSWORD HERE ---
-ADMIN_PASSWORD = "Admin@CourierBird" 
+DB_PATH = os.environ.get('DATABASE_URL', 'logistics_kyc.db')
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'static/uploads')
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS tokens 
-                      (token TEXT PRIMARY KEY, expiry_time TEXT, used INTEGER DEFAULT 0)''')
+    # Yahan ab hamesha ke liye link active rahegi, tokens table ki zaroorat nahi hai
     cursor.execute('''CREATE TABLE IF NOT EXISTS kyc_data 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT, gstin TEXT, pan TEXT, 
                        contact_person TEXT, mobile TEXT, email TEXT, bank_account TEXT, ifsc_code TEXT, 
@@ -33,61 +31,15 @@ def init_db():
 
 init_db()
 
-@app.route('/generate-link', methods=['GET'])
-def generate_link():
-    token = secrets.token_urlsafe(16)
-    expiry_time = (datetime.now() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
-    
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO tokens (token, expiry_time) VALUES (?, ?)", (token, expiry_time))
-    conn.commit()
-    conn.close()
-    
-    base_url = request.host_url.rstrip('/')
-    customer_link = f"{base_url}/kyc/{token}"
-    
-    return f'''
-    <div style="font-family:sans-serif; max-width:500px; margin:50px auto; padding:20px; border:1px solid #ccc; border-radius:8px;">
-        <h2>Courier Bird - KYC Link Generated</h2>
-        <p>This link is valid for 48 hours:</p>
-        <input type="text" value="{customer_link}" id="linkInput" style="width:100%; padding:10px; margin-bottom:10px;" readonly>
-        <button onclick="navigator.clipboard.writeText(document.getElementById('linkInput').value); alert('Link copied!');" style="background:#1e3a8a; color:white; border:none; padding:10px 15px; cursor:pointer; border-radius:4px;">Copy Link</button>
-    </div>
-    '''
+# --- 1. SINGLE PERMANENT KYC LINK ROUTE ---
+@app.route('/kyc', methods=['GET'])
+def kyc_form():
+    # Ab bina kisi token ya restriction ke direct form open hoga
+    return render_template('kyc_form.html')
 
-@app.route('/kyc/<token>', methods=['GET'])
-def kyc_form(token):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT expiry_time, used FROM tokens WHERE token=?", (token,))
-    result = cursor.fetchone()
-    conn.close()
-    
-    if not result:
-        return "<h3>Invalid KYC Link!</h3>", 404
-        
-    expiry_time = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
-    used = result[1]
-    
-    if datetime.now() > expiry_time:
-        return "<h3>⏳ Link Expired! This KYC link was only valid for 48 hours.</h3>", 403
-    if used == 1:
-        return "<h3>✅ KYC already submitted using this link.</h3>", 403
-        
-    return render_template('kyc_form.html', token=token)
-
-@app.route('/submit_kyc/<token>', methods=['POST'])
-def submit_kyc(token):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT used FROM tokens WHERE token=?", (token,))
-    result = cursor.fetchone()
-    
-    if not result or result[0] == 1:
-        conn.close()
-        return "Link invalid or already used.", 403
-
+# --- 2. SUBMIT ROUTE FOR ALL CUSTOMERS ---
+@app.route('/submit_kyc', methods=['POST'])
+def submit_kyc():
     c_name = request.form.get('company_name')
     gstin = request.form.get('gstin')
     pan = request.form.get('pan')
@@ -98,10 +50,10 @@ def submit_kyc(token):
     ifsc = request.form.get('ifsc_code')
     sub_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
     cursor.execute('''INSERT INTO kyc_data (company_name, gstin, pan, contact_person, mobile, email, bank_account, ifsc_code, submission_time)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (c_name, gstin, pan, p_name, mobile, email, bank, ifsc, sub_time))
-    
-    cursor.execute("UPDATE tokens SET used=1 WHERE token=?", (token,))
     conn.commit()
     conn.close()
 
@@ -114,9 +66,10 @@ def submit_kyc(token):
 
     return f"<h2 style='text-align:center;font-family:sans-serif;color:green;margin-top:50px;'>✅ KYC Submitted Successfully for {c_name}!</h2>"
 
+# --- 3. DOWNLOAD & ADMIN ROUTES ---
 @app.route('/download-zip/<int:row_id>', methods=['GET'])
 def download_zip(row_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM kyc_data WHERE id=?", (row_id,))
     row = cursor.fetchone()
@@ -152,7 +105,7 @@ def download_zip(row_id):
 
 @app.route('/download-excel', methods=['GET'])
 def download_excel():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM kyc_data")
     rows = cursor.fetchall()
@@ -168,14 +121,12 @@ def download_excel():
     output.seek(0)
     return send_file(output, mimetype='text/csv', as_attachment=True, download_name="CourierBird_Master_KYC_Data.csv")
 
-# --- SECURE PASSWORD ROUTE ---
 @app.route('/view-secret-data', methods=['GET', 'POST'])
 def view_data():
     password_entered = request.form.get('password', '')
     
-    # Agar POST request nahi hai ya password galat hai, toh pehle login screen dikhao
     if request.method == 'POST' and password_entered == ADMIN_PASSWORD:
-        pass # Sahi password hone par niche ka table render hoga
+        pass 
     else:
         error_msg = ""
         if request.method == 'POST':
@@ -192,8 +143,7 @@ def view_data():
         </div>
         '''
 
-    # --- AGAR PASSWORD SAHI HAI TOH YEH TABLE DIKHEGA ---
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM kyc_data")
     rows = cursor.fetchall()
@@ -241,4 +191,5 @@ def view_data():
     return html
 
 if __name__ == '__main__':
-    app.run(port=8000, debug=True)
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host='0.0.0.0', port=port)
