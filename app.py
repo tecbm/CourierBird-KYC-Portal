@@ -45,7 +45,7 @@ def save_details_to_drive(service, folder_id, data):
     }
     
     from io import BytesIO
-    media = MediaIoBaseUpload(BytesIO(content.encode('utf-8')), mime_type='text/plain', resumable=True)
+    media = MediaIoBaseUpload(BytesIO(content.encode('utf-8')), mimetype='text/plain', resumable=True)
     service.files().create(body=file_metadata, media_body=media, fields='id').execute()
 
 @app.route('/kyc', methods=['GET'])
