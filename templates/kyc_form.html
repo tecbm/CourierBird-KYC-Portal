@@ -5,22 +5,138 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Courier Bird - Logistics Partner Onboarding</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f1f5f9; padding: 20px; color: #334155; }
-        .form-container { max-width: 650px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .header { text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 25px; }
-        .company-logo { max-width: 180px; height: auto; margin-bottom: 10px; }
-        h2 { color: #1e3a8a; text-align: center; margin: 5px 0; font-size: 24px; }
-        p.sub { text-align: center; color: #64748b; font-size: 14px; margin: 0; }
-        .section-header { font-weight: 600; color: #3b82f6; margin: 25px 0 10px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; }
-        input[type="text"], input[type="email"] { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
-        input[type="file"] { background: #f8fafc; padding: 8px; width: 100%; border: 1px dashed #cbd5e1; border-radius: 4px; box-sizing: border-box; }
-        .submit-btn { width: 100%; background: #1e3a8a; color: white; border: none; padding: 12px; font-size: 16px; font-weight: 600; border-radius: 4px; cursor: pointer; margin-top: 20px; }
-        .submit-btn:hover { background: #172554; }
-        
-        /* Red Note ke liye styling class */
-        .red-note { color: #dc2626; font-size: 13px; font-weight: 500; margin-top: 6px; margin-bottom: 10px; display: block; }
+        body { 
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+            /* Premium Logistics/Cargo Background Image with Overlay */
+            background: linear-gradient(rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.65)), 
+                        url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=2000&auto=format&fit=crop') no-repeat center center fixed;
+            background-size: cover;
+            padding: 40px 20px; 
+            color: #1e293b; 
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .form-container { 
+            width: 100%;
+            max-width: 650px; 
+            margin: 0 auto; 
+            /* Beautiful frosted glass effect (semi-transparent white) */
+            background: rgba(255, 255, 255, 0.95); 
+            backdrop-filter: blur(10px);
+            padding: 40px; 
+            border-radius: 16px; 
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2); 
+            box-sizing: border-box;
+        }
+        .header { 
+            text-align: center; 
+            border-bottom: 2px solid #f1f5f9; 
+            padding-bottom: 24px; 
+            margin-bottom: 30px; 
+        }
+        .company-logo { 
+            max-width: 180px; 
+            height: auto; 
+            margin-bottom: 12px; 
+        }
+        h2 { 
+            color: #1e3a8a; 
+            text-align: center; 
+            margin: 5px 0; 
+            font-size: 26px; 
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+        p.sub { 
+            text-align: center; 
+            color: #475569; 
+            font-size: 14px; 
+            margin: 5px 0 0 0; 
+            font-weight: 500;
+        }
+        .section-header { 
+            font-weight: 700; 
+            color: #2563eb; 
+            margin: 30px 0 15px 0; 
+            border-bottom: 2px solid #eff6ff; 
+            padding-bottom: 8px; 
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .form-group { 
+            margin-bottom: 20px; 
+        }
+        label { 
+            display: block; 
+            font-size: 14px; 
+            font-weight: 600; 
+            margin-bottom: 6px; 
+            color: #334155;
+        }
+        input[type="text"], input[type="email"] { 
+            width: 100%; 
+            padding: 12px; 
+            border: 1.5px solid #cbd5e1; 
+            border-radius: 8px; 
+            box-sizing: border-box; 
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background-color: #f8fafc;
+        }
+        input[type="text"]:focus, input[type="email"]:focus {
+            outline: none;
+            border-color: #2563eb;
+            background-color: #ffffff;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+        }
+        input[type="file"] { 
+            background: #f8fafc; 
+            padding: 12px; 
+            width: 100%; 
+            border: 2px dashed #cbd5e1; 
+            border-radius: 8px; 
+            box-sizing: border-box; 
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+        }
+        input[type="file"]:hover {
+            border-color: #2563eb;
+            background: #f0fdf4;
+        }
+        .submit-btn { 
+            width: 100%; 
+            background: linear-gradient(135deg, #1e3a8a, #2563eb); 
+            color: white; 
+            border: none; 
+            padding: 15px; 
+            font-size: 16px; 
+            font-weight: 700; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            margin-top: 30px; 
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+        }
+        .submit-btn:hover { 
+            background: linear-gradient(135deg, #172554, #1d4ed8); 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(37, 99, 235, 0.3);
+        }
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        .red-note { 
+            color: #dc2626; 
+            font-size: 13px; 
+            font-weight: 600; 
+            margin-top: 8px; 
+            display: block; 
+        }
     </style>
 </head>
 <body>
@@ -33,7 +149,6 @@
         <p class="sub">Logistics Partner KYC & Onboarding Verification Form</p>
     </div>
 
-    <!-- UPDATE: Action badal kar single-link submit route (/submit_kyc) kar diya hai -->
     <form action="/submit_kyc" method="POST" enctype="multipart/form-data">
         
         <div class="section-header">1. Company / Business Details</div>
@@ -53,7 +168,7 @@
         <div class="section-header">2. Point of Contact</div>
         <div class="form-group">
             <label>Contact Person Name *</label>
-            <input type="text" name="contact_person" required>
+            <input type="text" name="contact_person" required placeholder="Full Name">
         </div>
         <div class="form-group">
             <label>Mobile Number *</label>
@@ -67,7 +182,7 @@
         <div class="section-header">3. Bank Account Details</div>
         <div class="form-group">
             <label>Bank Account Number *</label>
-            <input type="text" name="bank_account" required>
+            <input type="text" name="bank_account" required placeholder="Account Number">
         </div>
         <div class="form-group">
             <label>IFSC Code *</label>
@@ -94,7 +209,6 @@
         <div class="form-group">
             <label>Signed Cheque in our Company Name *</label>
             <input type="file" name="cheque_doc" accept=".pdf, .jpg, .jpeg, .png" required>
-            <!-- Red Note Jo Cheque Ke Niche Add Hua Hai -->
             <span class="red-note">* Note: Please deliver original cheque to our representative.</span>
         </div>
 
