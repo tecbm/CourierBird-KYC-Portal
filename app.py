@@ -1,137 +1,149 @@
 import os
-import re
 import sqlite3
 import secrets
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request
-from werkzeug.utils import secure_filename
+from flask import Flask, render_template, request, redirect, url_for
 
 app = Flask(__name__)
+app.secret_key = secrets.token_hex(16)
 
-# Configurations
+# Normal storage path (Free Tier ke liye)
 UPLOAD_FOLDER = 'customer_documents'
+DB_NAME = 'logistics_kyc.db'
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024  # 15MB limit
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Database Initialize
 def init_db():
-    conn = sqlite3.connect('logistics_kyc.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS customer_kyc (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_name TEXT, gstin TEXT, pan_number TEXT,
-            contact_person TEXT, mobile TEXT, email TEXT,
-            bank_account TEXT, ifsc_code TEXT,
-            gst_file TEXT, pan_file TEXT, aadhaar_file TEXT, address_file TEXT, cheque_file TEXT
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS kyc_links (
-            token TEXT PRIMARY KEY,
-            created_at TEXT,
-            expires_at TEXT,
-            status TEXT DEFAULT 'ACTIVE'
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS tokens 
+                      (token TEXT PRIMARY KEY, expiry_time TEXT, used INTEGER DEFAULT 0)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS kyc_data 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT, gstin TEXT, pan TEXT, 
+                       contact_person TEXT, mobile TEXT, email TEXT, bank_account TEXT, ifsc_code TEXT, 
+                       submission_time TEXT)''')
     conn.commit()
     conn.close()
 
 init_db()
 
 @app.route('/generate-link', methods=['GET'])
-def generate_new_link():
+def generate_link():
     token = secrets.token_urlsafe(16)
-    now = datetime.now()
-    expiry = now + timedelta(hours=48)
+    expiry_time = (datetime.now() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
     
-    conn = sqlite3.connect('logistics_kyc.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO kyc_links (token, created_at, expires_at) VALUES (?, ?, ?)',
-                   (token, now.strftime('%Y-%m-%d %H:%M:%S'), expiry.strftime('%Y-%m-%d %H:%M:%S')))
+    cursor.execute("INSERT INTO tokens (token, expiry_time) VALUES (?, ?)", (token, expiry_time))
     conn.commit()
     conn.close()
     
-    domain = request.host_url
-    customer_link = f"{domain}kyc/{token}"
+    base_url = request.host_url.rstrip('/')
+    customer_link = f"{base_url}/kyc/{token}"
     
-    return f"""
-    <div style="font-family: Arial; margin: 50px; text-align: center;">
-        <h2>🔗 New KYC Link Generated</h2>
-        <p>Yeh link agle 48 hours tak active rahegi:</p>
-        <input type="text" value="{customer_link}" style="width: 500px; padding: 10px; text-align: center;" readonly><br><br>
-        <small style="color: red;">Expires on: {expiry.strftime('%d-%b-%Y %I:%M %p')}</small>
+    return f'''
+    <div style="font-family:sans-serif; max-width:500px; margin:50px auto; padding:20px; border:1px solid #ccc; border-radius:8px;">
+        <h2>Courier Bird - KYC Link Generated</h2>
+        <p>This link is valid for 48 hours:</p>
+        <input type="text" value="{customer_link}" id="linkInput" style="width:100%; padding:10px; margin-bottom:10px;" readonly>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('linkInput').value); alert('Link copied!');" style="background:#1e3a8a; color:white; border:none; padding:10px 15px; cursor:pointer; border-radius:4px;">Copy Link</button>
     </div>
-    """
+    '''
 
 @app.route('/kyc/<token>', methods=['GET'])
-def open_kyc_form(token):
-    conn = sqlite3.connect('logistics_kyc.db')
+def kyc_form(token):
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('SELECT expires_at, status FROM kyc_links WHERE token = ?', (token,))
-    link_info = cursor.fetchone()
+    cursor.execute("SELECT expiry_time, used FROM tokens WHERE token=?", (token,))
+    result = cursor.fetchone()
     conn.close()
     
-    if not link_info:
-        return "<h2 style='color:red; text-align:center; margin-top:50px;'>❌ Invalid Link!</h2>", 404
+    if not result:
+        return "<h3>Invalid KYC Link!</h3>", 404
         
-    expires_at_str, status = link_info
-    expiry_time = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+    expiry_time = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+    used = result[1]
     
-    if datetime.now() > expiry_time or status == 'EXPIRED':
-        return "<div style='text-align:center; margin-top:100px; font-family:Arial;'><h2 style='color:red;'>⏳ Link Expired!</h2><p>Yeh KYC link 48 hours se purani hai.</p></div>", 403
-
+    if datetime.now() > expiry_time:
+        return "<h3>⏳ Link Expired! This KYC link was only valid for 48 hours.</h3>", 403
+    if used == 1:
+        return "<h3>✅ KYC already submitted using this link.</h3>", 403
+        
     return render_template('kyc_form.html', token=token)
 
 @app.route('/submit_kyc/<token>', methods=['POST'])
 def submit_kyc(token):
-    conn = sqlite3.connect('logistics_kyc.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('SELECT expires_at, status FROM kyc_links WHERE token = ?', (token,))
-    link_info = cursor.fetchone()
+    cursor.execute("SELECT used FROM tokens WHERE token=?", (token,))
+    result = cursor.fetchone()
     
-    if not link_info or datetime.now() > datetime.strptime(link_info[0], '%Y-%m-%d %H:%M:%S') or link_info[1] == 'EXPIRED':
+    if not result or result[0] == 1:
         conn.close()
-        return "<h3>❌ Session Expired!</h3>"
+        return "Link invalid or already used.", 403
 
-    comp_name = request.form.get('company_name')
+    c_name = request.form.get('company_name')
     gstin = request.form.get('gstin')
-    pan = request.form.get('pan').upper()
-    person = request.form.get('contact_person')
+    pan = request.form.get('pan')
+    p_name = request.form.get('contact_person')
     mobile = request.form.get('mobile')
     email = request.form.get('email')
-    bank_acc = request.form.get('bank_account')
-    ifsc = request.form.get('ifsc_code').upper()
+    bank = request.form.get('bank_account')
+    ifsc = request.form.get('ifsc_code')
+    sub_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    uploaded_paths = {}
-    docs = ['gst_doc', 'pan_doc', 'aadhaar_doc', 'address_doc', 'cheque_doc']
-    for d in docs:
-        file = request.files.get(d)
-        if file and file.filename != '':
-            filename = f"{secure_filename(comp_name)}_{d}_{secure_filename(file.filename)}"
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            uploaded_paths[d] = filename
-        else:
-            conn.close()
-            return f"<h3>❌ File missing for {d}</h3>"
-
-    cursor.execute('''
-        INSERT INTO customer_kyc (
-            company_name, gstin, pan_number, contact_person, mobile, email, bank_account, ifsc_code,
-            gst_file, pan_file, aadhaar_file, address_file, cheque_file
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        comp_name, gstin, pan, person, mobile, email, bank_acc, ifsc,
-        uploaded_paths['gst_doc'], uploaded_paths['pan_doc'], uploaded_paths['aadhaar_doc'], 
-        uploaded_paths['address_doc'], uploaded_paths['cheque_doc']
-    ))
+    cursor.execute('''INSERT INTO kyc_data (company_name, gstin, pan, contact_person, mobile, email, bank_account, ifsc_code, submission_time)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (c_name, gstin, pan, p_name, mobile, email, bank, ifsc, sub_time))
     
-    cursor.execute('UPDATE kyc_links SET status = "EXPIRED" WHERE token = ?', (token,))
+    cursor.execute("UPDATE tokens SET used=1 WHERE token=?", (token,))
     conn.commit()
     conn.close()
 
-    return f"<div style='text-align:center;margin-top:50px;'><h2>✅ KYC Submitted Successfully for {comp_name}!</h2></div>"
+    doc_fields = ['gst_doc', 'pan_doc', 'aadhaar_doc', 'address_doc', 'cheque_doc']
+    for field in doc_fields:
+        file = request.files.get(field)
+        if file and file.filename != '':
+            # Files ko isi main project directory ke static/images folder me temporary rakhte hain taaki bina shell ke bhi unhe direct link se khola ja sake
+            os.makedirs('static/uploads', exist_ok=True)
+            filename = f"{c_name}_{field}_{file.filename}"
+            file.save(os.path.join('static/uploads', filename))
+
+    return f"<h2 style='text-align:center;font-family:sans-serif;color:green;margin-top:50px;'>✅ KYC Submitted Successfully for {c_name}!</h2>"
+
+# --- SECRET LINK TO VIEW DATA ---
+@app.route('/view-secret-data', methods=['GET'])
+def view_data():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM kyc_data")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    html = '''
+    <style>
+        table { width: 100%; border-collapse: collapse; font-family: sans-serif; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #1e3a8a; color: white; }
+        tr:nth-child(even){background-color: #f2f2f2;}
+    </style>
+    <h2>Courier Bird - Received KYC Applications</h2>
+    <table>
+        <tr>
+            <th>ID</th><th>Company Name</th><th>GSTIN</th><th>PAN</th><th>Contact Person</th>
+            <th>Mobile</th><th>Email</th><th>Bank Account</th><th>IFSC</th><th>Time</th>
+        </tr>
+    '''
+    for row in rows:
+        html += f'''
+        <tr>
+            <td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td>
+            <td>{row[4]}</td><td>{row[5]}</td><td>{row[6]}</td><td>{row[7]}</td>
+            <td>{row[8]}</td><td>{row[9]}</td>
+        </tr>
+        '''
+    html += '</table>'
+    return html
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8000)
+    app.run(port=8000, debug=True)
