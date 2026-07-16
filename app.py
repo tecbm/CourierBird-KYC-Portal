@@ -13,6 +13,9 @@ app.secret_key = secrets.token_hex(16)
 UPLOAD_FOLDER = 'static/uploads'
 DB_NAME = 'logistics_kyc.db'
 
+# --- SET YOUR DASHBOARD PASSWORD HERE ---
+ADMIN_PASSWORD = "Admin@CourierBird" 
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -111,7 +114,6 @@ def submit_kyc(token):
 
     return f"<h2 style='text-align:center;font-family:sans-serif;color:green;margin-top:50px;'>✅ KYC Submitted Successfully for {c_name}!</h2>"
 
-# --- SMART ROUTE: ZIP MEIN FILES + CUSTOMER KI EXCEL SHEET EK SATH ---
 @app.route('/download-zip/<int:row_id>', methods=['GET'])
 def download_zip(row_id):
     conn = sqlite3.connect(DB_NAME)
@@ -126,34 +128,21 @@ def download_zip(row_id):
     company_name = row[1]
     c_name_clean = company_name.replace(" ", "_")
     
-    # 1. Pehle customer ke text data ki CSV (Excel) file string banayein
     csv_headers = "Field,Customer Details\n"
     csv_rows = [
-        f"ID,{row[0]}",
-        f"Company Name,{row[1]}",
-        f"GSTIN,{row[2]}",
-        f"PAN,{row[3]}",
-        f"Contact Person,{row[4]}",
-        f"Mobile,{row[5]}",
-        f"Email,{row[6]}",
-        f"Bank Account,{row[7]}",
-        f"IFSC Code,{row[8]}",
-        f"Submission Time,{row[9]}"
+        f"ID,{row[0]}", f"Company Name,{row[1]}", f"GSTIN,{row[2]}", f"PAN,{row[3]}",
+        f"Contact Person,{row[4]}", f"Mobile,{row[5]}", f"Email,{row[6]}",
+        f"Bank Account,{row[7]}", f"IFSC Code,{row[8]}", f"Submission Time,{row[9]}"
     ]
     csv_data = csv_headers + "\n".join(csv_rows)
     
-    # 2. Memory mein ZIP file banana shuru karein
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        
-        # Sabse pehle Excel/CSV file ko ZIP ke andar daalein
         zip_file.writestr(f"{c_name_clean}_Details.csv", csv_data.encode('utf-8'))
         
-        # Phir customer ke uploaded documents ko folder se lekar ZIP ke andar daalein
         if os.path.exists(UPLOAD_FOLDER):
             all_files = os.listdir(UPLOAD_FOLDER)
             customer_files = [f for f in all_files if f.startswith(f"{c_name_clean}_")]
-            
             for file in customer_files:
                 file_path = os.path.join(UPLOAD_FOLDER, file)
                 zip_file.write(file_path, arcname=file)
@@ -161,7 +150,6 @@ def download_zip(row_id):
     zip_buffer.seek(0)
     return send_file(zip_buffer, mimetype='application/zip', as_attachment=True, download_name=f"{c_name_clean}_Complete_KYC.zip")
 
-# --- MASTER EXCEL DOWNLOAD (FOR ALL CUSTOMERS AT ONCE) ---
 @app.route('/download-excel', methods=['GET'])
 def download_excel():
     conn = sqlite3.connect(DB_NAME)
@@ -180,9 +168,31 @@ def download_excel():
     output.seek(0)
     return send_file(output, mimetype='text/csv', as_attachment=True, download_name="CourierBird_Master_KYC_Data.csv")
 
-# --- SECRET DASHBOARD ---
-@app.route('/view-secret-data', methods=['GET'])
+# --- SECURE PASSWORD ROUTE ---
+@app.route('/view-secret-data', methods=['GET', 'POST'])
 def view_data():
+    password_entered = request.form.get('password', '')
+    
+    # Agar POST request nahi hai ya password galat hai, toh pehle login screen dikhao
+    if request.method == 'POST' and password_entered == ADMIN_PASSWORD:
+        pass # Sahi password hone par niche ka table render hoga
+    else:
+        error_msg = ""
+        if request.method == 'POST':
+            error_msg = "<p style='color:red;'>❌ Incorrect Password! Try again.</p>"
+            
+        return f'''
+        <div style="font-family:sans-serif; max-width:400px; margin:100px auto; padding:30px; border:1px solid #ccc; border-radius:8px; text-align:center; box-shadow: 0px 4px 10px rgba(0,0,0,0.1);">
+            <h2>🦅 Courier Bird Admin Login</h2>
+            {error_msg}
+            <form method="POST" action="/view-secret-data">
+                <input type="password" name="password" placeholder="Enter Admin Password" style="width:100%; padding:10px; margin:15px 0; border:1px solid #ccc; border-radius:4px;" required>
+                <button type="submit" style="background:#1e3a8a; color:white; border:none; padding:10px 20px; width:100%; cursor:pointer; border-radius:4px; font-weight:bold;">Access Dashboard</button>
+            </form>
+        </div>
+        '''
+
+    # --- AGAR PASSWORD SAHI HAI TOH YEH TABLE DIKHEGA ---
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM kyc_data")
