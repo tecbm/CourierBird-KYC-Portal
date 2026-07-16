@@ -8,6 +8,9 @@ from googleapiclient.http import MediaIoBaseUpload
 
 app = Flask(__name__)
 
+# Aapka personal gmail ID jiske paas drive ka storage quota hai
+PERSONAL_EMAIL = "operations@bhayajimercantile.com"  # <--- YAHA APNA SAHI EMAIL ID DAALEIN (Jis par aapko files chahiye)
+
 def get_drive_service():
     creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if not creds_json:
@@ -23,6 +26,22 @@ def get_drive_service():
     return build('drive', 'v3', credentials=creds)
 
 MAIN_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
+
+# Ownership transfer karne ka helper function
+def transfer_ownership(drive_service, file_id, email):
+    try:
+        permission = {
+            'type': 'user',
+            'role': 'writer', # temporary writer permission to prevent quota issues
+            'emailAddress': email
+        }
+        drive_service.permissions().create(
+            fileId=file_id,
+            body=permission,
+            transferOwnership=False # set to False to bypass strict domain admin rules, but allows writing
+        ).execute()
+    except Exception as e:
+        print(f"Permission sharing failed for {file_id}: {str(e)}")
 
 @app.route('/kyc', methods=['GET'])
 def kyc_form():
@@ -43,7 +62,7 @@ def submit_kyc():
         phone = request.form.get('phone', '')
         email = request.form.get('email', '')
 
-        # 1. Main Company Sub-folder Banayein
+        # 1. Create Main Company Sub-folder
         folder_metadata = {
             'name': f"KYC_{company_name}",
             'mimeType': 'application/vnd.google-apps.folder',
@@ -51,21 +70,23 @@ def submit_kyc():
         }
         subfolder = drive_service.files().create(body=folder_metadata, fields='id').execute()
         subfolder_id = subfolder.get('id')
-
-        # 2. Text Details File
-        details_content = f"Company Name: {company_name}\nPAN: {pan_number}\nGST: {gst_number}\nContact: {contact_person}\nPhone: {phone}\nEmail: {email}\n"
         
+        # Folder par personal email ko access dein
+        transfer_ownership(drive_service, subfolder_id, PERSONAL_EMAIL)
+
+        # 2. Upload text details file inside sub-folder
+        details_content = f"Company Name: {company_name}\nPAN: {pan_number}\nGST: {gst_number}\nContact: {contact_person}\nPhone: {phone}\nEmail: {email}\n"
         text_metadata = {
             'name': f"{company_name}_details.txt",
             'parents': [subfolder_id]
         }
         
-        # Bytes stream handling logic
         bio = BytesIO(details_content.encode('utf-8'))
         text_media = MediaIoBaseUpload(bio, mimetype='text/plain', resumable=False)
-        drive_service.files().create(body=text_metadata, media_body=text_media).execute()
+        text_file = drive_service.files().create(body=text_metadata, media_body=text_media, fields='id').execute()
+        transfer_ownership(drive_service, text_file.get('id'), PERSONAL_EMAIL)
 
-        # 3. Documents Attachments Upload
+        # 3. Upload structural attachments inside sub-folder
         uploaded_files = request.files.getlist('files')
         for file in uploaded_files:
             if file and file.filename != '':
@@ -74,14 +95,14 @@ def submit_kyc():
                     'parents': [subfolder_id]
                 }
                 file_media = MediaIoBaseUpload(file.stream, mimetype=file.content_type if file.content_type else 'application/octet-stream', resumable=False)
-                drive_service.files().create(body=file_metadata, media_body=file_media).execute()
+                uploaded_doc = drive_service.files().create(body=file_metadata, media_body=file_media, fields='id').execute()
+                transfer_ownership(drive_service, uploaded_doc.get('id'), PERSONAL_EMAIL)
 
         return "<h1>KYC Documents Submitted Successfully!</h1><p>Check your Google Drive folder now.</p>", 200
 
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        # Google API detailed content display logic
         error_content = ""
         if hasattr(e, 'content'):
             try:
