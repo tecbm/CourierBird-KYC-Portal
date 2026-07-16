@@ -1,8 +1,8 @@
 import os
 import json
 from io import BytesIO
-from flask import Flask, request, render_template
-from google.oauth2 import service_account
+from flask import Flask, request, render_template, redirect
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -12,20 +12,34 @@ app = Flask(__name__)
 PERSONAL_EMAIL = "operations@bhayajimercantile.com"
 
 def get_drive_service():
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if not creds_json:
-        raise ValueError("GOOGLE_CREDENTIALS_JSON environment variable is missing!")
+    # Render par set kiye gaye naye environment variables ko read karna
+    client_id = os.environ.get("GOOGLE_CLIENT_ID")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+    refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
     
-    creds_json = creds_json.strip()
-    creds_dict = json.loads(creds_json)
+    if not all([client_id, client_secret, refresh_token]):
+        raise ValueError("Google OAuth credentials (CLIENT_ID, SECRET, or REFRESH_TOKEN) are missing in Render environment variables!")
     
-    creds = service_account.Credentials.from_service_account_info(
-        creds_dict, 
+    # Naye OAuth Credentials build karna jo personal storage ka quota use karenge
+    creds = Credentials(
+        token=None,  # Access token automatic refresh ho jayega
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret,
         scopes=["https://www.googleapis.com/auth/drive"]
     )
+    
     return build('drive', 'v3', credentials=creds)
 
 MAIN_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
+
+# --- ROOT ROUTE REDIRECT ---
+# Agar koi direct main link 'https://courierbird-kyc-portal.onrender.com/' kholde, 
+# toh use 'Not Found' ke bajaye seedhe form wale page par redirect kar diya jaye.
+@app.route('/', methods=['GET'])
+def home_redirect():
+    return redirect('/kyc')
 
 @app.route('/kyc', methods=['GET'])
 def kyc_form():
@@ -46,8 +60,7 @@ def submit_kyc():
         phone = request.form.get('phone', '')
         email = request.form.get('email', '')
 
-        # 1. Create Main Company Sub-folder inside your Shared Folder
-        # (Is folder ka main owner aapka personal email rahega kyunki main folder aapka hai)
+        # 1. Company ke naam ka sub-folder banana (Aapke main folder ke andar)
         folder_metadata = {
             'name': f"KYC_{company_name}",
             'mimeType': 'application/vnd.google-apps.folder',
@@ -60,7 +73,7 @@ def submit_kyc():
         ).execute()
         subfolder_id = subfolder.get('id')
 
-        # 2. Upload text details file inside sub-folder (supportsAllDrives configuration included)
+        # 2. Text details file save karna
         details_content = f"Company Name: {company_name}\nPAN: {pan_number}\nGST: {gst_number}\nContact: {contact_person}\nPhone: {phone}\nEmail: {email}\n"
         text_metadata = {
             'name': f"{company_name}_details.txt",
@@ -75,7 +88,7 @@ def submit_kyc():
             supportsAllDrives=True
         ).execute()
 
-        # 3. Upload structural attachments inside sub-folder
+        # 3. Documents/Attachments ko save karna
         uploaded_files = request.files.getlist('files')
         for file in uploaded_files:
             if file and file.filename != '':
@@ -83,7 +96,11 @@ def submit_kyc():
                     'name': file.filename,
                     'parents': [subfolder_id]
                 }
-                file_media = MediaIoBaseUpload(file.stream, mimetype=file.content_type if file.content_type else 'application/octet-stream', resumable=False)
+                file_media = MediaIoBaseUpload(
+                    file.stream, 
+                    mimetype=file.content_type if file.content_type else 'application/octet-stream', 
+                    resumable=False
+                )
                 drive_service.files().create(
                     body=file_metadata, 
                     media_body=file_media,
